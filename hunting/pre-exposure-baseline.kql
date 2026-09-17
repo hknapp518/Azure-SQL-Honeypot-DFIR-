@@ -1,0 +1,63 @@
+// Pre-Exposure Baseline
+// Asset: CORP-DB-PROD02
+// Purpose: Establish normal endpoint, network, authentication,
+// and MySQL activity before controlled honeypot exposure.
+
+// ============================================================
+// 1. PROCESS ACTIVITY BASELINE
+// ============================================================
+
+let Device = "CORP-DB-PROD02";
+DeviceProcessEvents
+| where DeviceName =~ Device
+| where Timestamp > ago(24h)
+| summarize
+    ProcessExecutions = count(),
+    UniqueProcesses = dcount(FileName)
+| project ProcessExecutions, UniqueProcesses
+
+
+// ============================================================
+// 2. NETWORK ACTIVITY BASELINE
+// ============================================================
+
+let Device = "CORP-DB-PROD02";
+DeviceNetworkEvents
+| where DeviceName =~ Device
+| where Timestamp > ago(24h)
+| summarize
+    NetworkEvents = count(),
+    UniqueRemoteIPs = dcount(RemoteIP)
+| project NetworkEvents, UniqueRemoteIPs
+
+
+// ============================================================
+// 3. AUTHENTICATION BASELINE
+// ============================================================
+
+let Device = "CORP-DB-PROD02";
+DeviceLogonEvents
+| where DeviceName =~ Device
+| where Timestamp > ago(24h)
+| summarize
+    TotalLogons = count(),
+    SuccessfulLogons = countif(ActionType == "LogonSuccess"),
+    FailedLogons = countif(ActionType == "LogonFailed"),
+    UniqueRemoteIPs = dcount(RemoteIP)
+| project TotalLogons, SuccessfulLogons, FailedLogons, UniqueRemoteIPs
+
+
+// ============================================================
+// 4. MYSQL TELEMETRY BASELINE
+// Run in LAW-Cyber-Range
+// ============================================================
+
+let Device = "CORP-DB-PROD02";
+MySQLAudit_CL
+| where TimeGenerated > ago(24h)
+| extend DeviceName = tostring(split(_ResourceId, "/")[-1])
+| where DeviceName =~ Device
+| summarize
+    MySQLEvents = count(),
+    FirstEvent = min(TimeGenerated),
+    LastEvent = max(TimeGenerated)
