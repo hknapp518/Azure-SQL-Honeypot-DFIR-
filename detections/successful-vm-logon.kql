@@ -1,0 +1,21 @@
+// Detection: Successful Windows VM Logon
+// Asset: CORP-DB-PROD02
+// Data Source: Microsoft Defender for Endpoint - DeviceLogonEvents
+//
+// Purpose:
+// Detect successful authentication to the intentionally monitored
+// Administrator or Guest accounts on the honeypot VM.
+
+let MyDevice = "CORP-DB-PROD02";
+
+DeviceLogonEvents
+| where DeviceName == MyDevice
+| where AccountName in~ ("administrator", "guest")
+| where ActionType == "LogonSuccess"
+| project
+    TimeGenerated,
+    RemoteIP,
+    AccountName,
+    DeviceName,
+    ActionType,
+    LogonType
