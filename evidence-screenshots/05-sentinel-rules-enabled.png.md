@@ -1,0 +1,2 @@
+<img width="1588" height="410" alt="9d6a7083-048e-48c7-aebf-05af4bfa917d(1)" src="https://github.com/user-attachments/assets/5871dbed-daf1-4236-a47c-b83f2740830a" />
+Figure 5 — Pre-Exposure Sentinel Detection Validation: Microsoft Sentinel analytics rules for successful Windows authentication and successful MySQL authentication were enabled prior to controlled exposure, establishing active detection coverage for the honeypot environment.
