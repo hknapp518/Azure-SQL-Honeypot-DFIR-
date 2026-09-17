@@ -1,0 +1,49 @@
+// Detection: Successful MySQL Authentication
+// Asset: CORP-DB-PROD02
+// Data Source: MySQLAudit_CL
+//
+// Purpose:
+// Parse MySQL general-query telemetry and identify successful
+// authentication while excluding connection IDs associated with
+// failed authentication attempts.
+
+let MyDevice = "CORP-DB-PROD02";
+let MyTimeframe = ago(24h);
+
+let FailedConnections =
+MySQLAudit_CL
+| extend RawData = replace_string(RawData, "\t", " ")
+| extend DeviceName = tostring(split(_ResourceId, "/")[-1])
+| where DeviceName =~ MyDevice
+| where RawData has "Access denied"
+| extend ConnectionId = extract(@"^\S+\s+(\d+)\s+Connect", 1, RawData)
+| distinct ConnectionId;
+
+MySQLAudit_CL
+| where TimeGenerated > MyTimeframe
+| extend RawData = replace_string(RawData, "\t", " ")
+| extend DeviceName = tostring(split(_ResourceId, "/")[-1])
+| where DeviceName =~ MyDevice
+| where RawData has "Connect"
+| extend ConnectionId = extract(@"^\S+\s+(\d+)\s+Connect", 1, RawData)
+| extend ActionType =
+    case(
+        RawData has "Access denied", "LogonFailure",
+        ConnectionId in (FailedConnections), "Ignore",
+        "LogonSuccess"
+    )
+| where ActionType != "Ignore"
+| extend RawData = replace_string(RawData, "\t", " ")
+| extend Username = replace_string(
+    tostring(split(tostring(split(RawData,"@")[0]), " ")[-1]), "'", "")
+| extend IpAddress = replace_string(
+    tostring(split(split(RawData,"@")[1], " ")[0]), "'", "")
+| where ActionType == "LogonSuccess"
+| project
+    TimeGenerated,
+    DeviceName,
+    Username,
+    IpAddress,
+    ActionType,
+    RawData
+| order by TimeGenerated desc
