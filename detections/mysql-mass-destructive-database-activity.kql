@@ -1,0 +1,38 @@
+let MyDevice = "CORP-DB-PROD02";
+
+let Connections =
+MySQLAudit_CL
+| extend RawData = replace_string(RawData, "\t", " ")
+| extend DeviceName = tostring(split(_ResourceId, "/")[-1])
+| where DeviceName =~ MyDevice
+| where RawData has "Connect"
+| where RawData has "@"
+| where RawData !has "Access denied"
+| extend ConnectionId = extract(@"^\S+\s+(\d+)\s+Connect", 1, RawData)
+| extend Username = extract(@"Connect\s+([^@\s]+)@", 1, RawData)
+| extend SourceIP = extract(@"@([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", 1, RawData)
+| project DeviceName, ConnectionId, Username, SourceIP, ConnectionTime = TimeGenerated;
+
+let DestructiveActivity =
+MySQLAudit_CL
+| extend RawData = replace_string(RawData, "\t", " ")
+| extend DeviceName = tostring(split(_ResourceId, "/")[-1])
+| where DeviceName =~ MyDevice
+| where RawData has_any ("DROP TABLE", "DROP DATABASE")
+| extend ConnectionId = extract(@"^\S+\s+(\d+)\s+", 1, RawData)
+| summarize
+    DestructiveOperations = count(),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated),
+    Commands = make_set(RawData, 100)
+    by DeviceName, ConnectionId, bin(TimeGenerated, 5m)
+| where DestructiveOperations >= 3;
+
+DestructiveActivity
+| join kind=leftouter Connections on DeviceName, ConnectionId
+| where isempty(ConnectionTime)
+    or (ConnectionTime <= FirstSeen and ConnectionTime >= FirstSeen - 30m)
+| summarize arg_max(ConnectionTime, *)
+    by DeviceName, ConnectionId, FirstSeen
+| project FirstSeen, LastSeen, DeviceName, ConnectionId, Username, SourceIP,
+          DestructiveOperations, Commands
