@@ -1,0 +1,23 @@
+let MyDevice = "CORP-DB-PROD02";
+
+MySQLAudit_CL
+| extend RawData = replace_string(RawData, "\t", " ")
+| extend DeviceName = tostring(split(_ResourceId, "/")[-1])
+| where DeviceName =~ MyDevice
+| where RawData has "Connect"
+| where RawData has "@"
+| where RawData !has "Access denied"
+| extend ConnectionId = extract(@"^\S+\s+(\d+)\s+Connect", 1, RawData)
+| extend Username = extract(@"Connect\s+([^@\s]+)@", 1, RawData)
+| extend SourceIP = extract(@"@([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)", 1, RawData)
+| where isnotempty(SourceIP)
+| where Username =~ "root"
+| summarize
+    ConnectionCount = count(),
+    ConnectionIds = make_set(ConnectionId, 50),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated)
+    by DeviceName, Username, SourceIP, bin(TimeGenerated, 5m)
+| project FirstSeen, LastSeen, DeviceName, Username, SourceIP,
+          ConnectionCount, ConnectionIds
+| order by FirstSeen asc
