@@ -23,27 +23,28 @@ I used the compromise as a **detection-engineering feedback loop**: reconstruct 
 
 ---
 
-## Attack & Telemetry Metrics
+## Vulnerable vs. Hardened Security Outcomes
 
-Numbers make the attack progression visible. These measurements are kept tied to their actual evidence windows rather than blended into a single attack count.
+The project was designed as a controlled **before-and-after security experiment**: expose the vulnerable Azure/MySQL workload, measure the resulting activity and compromise, harden the same system, then measure the hardened environment.
 
-| Metric | Observed value | What it shows |
-|---|---:|---|
-| **Windows logon events** | **137** | Authentication activity captured in the formal baseline dataset |
-| **Successful Windows logons** | **23** | Successful logon telemetry observed in that dataset |
-| **Failed Windows logons** | **102** | Repeated failed authentication activity was visible before incident reconstruction |
-| **Unique Windows logon remote IPs** | **6** | Multiple remote sources appeared in Windows authentication telemetry |
-| **Explicit external MySQL root connections** | **87** | Historical MySQL authentication records with explicit external `root@IP` connections |
-| **Unique external MySQL root source IPs** | **13** | Breadth of privileged external MySQL activity in the historical auth dataset |
-| **Highest 5-minute root connection volume** | **36** | One external source generated 36 privileged connections in a single aggregation window |
-| **Destructive SQL events** | **40** | Initial detection hunt identified destructive `DROP TABLE` / `DROP DATABASE` activity |
-| **Destructive operations — ConnectionId 19** | **30** | High-confidence destructive session tied to `root@45.8.17.198` |
-| **High-impact admin actions** | **5 in ~3 sec** | Rapid log/recovery manipulation, privilege changes, and shutdown behavior |
-| **Incident-derived Sentinel detections** | **3** | Attack behavior converted into reusable detection coverage |
-| **Controlled validation** | **4 DROP TABLE events** | Safely generated test activity produced the expected high-severity Sentinel incident |
-| **Observed validation interval** | **~9 min** | Test activity → Sentinel incident, including ingestion and scheduled-rule processing |
+| Security Metric | 🔴 Vulnerable Exposure | 🟢 Hardened Exposure | Outcome |
+|---|---:|---:|---|
+| **Failed Windows logons** | Attack activity observed during exposure* | **0** in captured hardened validation window | Reduced |
+| **Successful Windows logons** | Successful remote logon activity observed* | **0** in captured hardened validation window | Reduced |
+| **External privileged MySQL access** | Multiple external `root@IP` sessions observed | **0 expected by design; remote `root@'%'` removed** | Remote root eliminated |
+| **Destructive SQL operations** | **40** identified during incident hunt | **0 uncontrolled** | Destructive path removed |
+| **High-impact MySQL admin actions** | **5 actions in ~3 sec** | **0 observed** | Destructive admin sequence absent |
+| **Database destruction** | **Yes** — corporate tables/database destroyed | **No** during hardened validation | Prevented in validation |
+| **Allow-all inbound NSG** | **Enabled** | **Removed** | Attack surface reduced |
+| **Windows Firewall** | **Disabled** | **Domain / Private / Public enabled** | Host firewall restored |
+| **MySQL remote root** | `root@'%'` **enabled** | `root@localhost` **only** | Privileged remote access removed |
+| **Corporate data state** | Tables destroyed during extortion activity | **Restored:** 372 credentials, 1,000 customers, 1,963 orders, 1,963 payments | Data recovered |
+| **Detection coverage** | Primarily authentication-focused | **+3 behavior-based Sentinel analytics** | Post-auth visibility added |
+| **Hardened telemetry health** | — | **117 network events / 12 MySQL events** captured | Monitoring remained operational |
 
-> **Scope note:** The **137 / 23 / 102 Windows logon figures** come from the formal baseline dataset and are not presented as 137 attack attempts. The **87 external MySQL root connections across 13 source IPs** come from the historical MySQL authentication dataset. Keeping those windows separate avoids overstating attacker activity.
+> **Measurement note:** Hardened counts describe the captured post-hardening validation window. The exact vulnerable-exposure Windows failed/successful logon totals are intentionally not substituted with pre-exposure baseline counts. They should only be added when verified from the vulnerable-exposure measurement window.
+
+**Result:** the vulnerable configuration permitted privileged external database access and destructive extortion activity. After containment, recovery, and hardening, the captured validation window showed **zero Windows logons, no uncontrolled destructive SQL, remote MySQL root access removed, and telemetry/detection coverage still operating**.
 
 
 ---
@@ -198,34 +199,6 @@ After confirming destructive activity, I:
 
 ---
 
-## Security Outcomes & Metrics
-
-The strongest outcome of the project is the measurable change between the **compromised exposure state** and the **recovered, hardened, detection-enabled state**.
-
-| Metric / Control | Exposure / Incident | Post-Hardening |
-|---|---|---|
-| **MySQL privileged access** | Remote `root@'%'` enabled | `root@localhost` only |
-| **Network exposure** | Allow-all inbound NSG | Custom allow-all removed |
-| **Windows Firewall** | Disabled during controlled exposure | Domain / Private / Public enabled |
-| **Destructive SQL** | **40 events** identified during initial detection hunt | No uncontrolled destructive activity; controlled validation only |
-| **High-impact admin activity** | **5 distinct actions in ~3 seconds** | Behavior converted into Sentinel detection coverage |
-| **External privileged MySQL activity** | Multiple external `root` sources observed | Remote privileged access eliminated |
-| **Corporate database** | Corporate tables/databases destroyed | Known-good schema restored |
-| **`credentials`** | Destroyed | **372 rows restored** |
-| **`customers`** | Destroyed | **1,000 rows restored** |
-| **`orders`** | Destroyed | **1,963 rows restored** |
-| **`payments`** | Destroyed | **1,963 rows restored** |
-| **Detection coverage** | Primarily authentication-focused | **3 new behavior-based Sentinel analytics** |
-| **Controlled detection test** | — | **4 `DROP TABLE` events → High-severity Sentinel incident** |
-| **Observed validation interval** | — | **~9 min from test activity to incident creation** |
-| **Captured hardened-run telemetry** | — | **117 network events / 12 MySQL events** |
-| **Captured hardened-run Windows logons** | — | **0 failed / 0 successful** in the validation window |
-
-> **Measurement note:** Post-hardening event counts and the ~9-minute interval describe the captured validation window and controlled test. They are not presented as universal attack-rate or MTTD benchmarks.
-
-The result was not simply a cleaned-up honeypot. The incident produced a **measurable reduction in attack surface, restored data integrity, and new detection coverage derived directly from observed attacker behavior**.
-
----
 
 ## What This Project Demonstrates
 
