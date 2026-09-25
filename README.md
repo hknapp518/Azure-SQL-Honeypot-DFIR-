@@ -1,14 +1,14 @@
-# Azure Ransomware with DFIR & Detection Engineering
+# Azure Ransomware Honeypot | DFIR & Detection Engineering
 
-> **Vulnerable Azure workload → ransomware attack → DFIR → Sentinel detections → hardened validation**
+> **Vulnerable Azure workload → ransomware/extortion attack → DFIR → Sentinel detections → hardened validation**
 
-Intentionally exposed an Azure Windows/MySQL workload to capture real-world attack activity. The system was compromised through privileged MySQL access, followed by **destructive SQL and a cryptocurrency ransomware/extortion attack**.
+I intentionally exposed an Azure Windows/MySQL workload to measure real-world attack activity. External infrastructure gained privileged MySQL access, executed destructive SQL, destroyed synthetic corporate data, and deployed a cryptocurrency ransom artifact.
 
-I investigated the compromise, recovered and hardened the environment, then converted the observed attacker behavior into **3 new Microsoft Sentinel detections**.
+I reconstructed the incident, contained and recovered the workload, hardened the original attack path, and converted observed attacker behavior into **3 new Microsoft Sentinel detections**.
 
-**Stack:** Microsoft Sentinel • Defender for Endpoint • Azure • KQL • MySQL
+**Stack:** Microsoft Sentinel • Defender for Endpoint • Azure • Log Analytics • AMA/DCR • KQL • MySQL
 
-### Incident at a Glance
+## Incident at a Glance
 
 | | Evidence-backed result |
 |---|---|
@@ -17,7 +17,7 @@ I investigated the compromise, recovered and hardened the environment, then conv
 | **Compromise** | **112 external MySQL root connections** captured |
 | **Ransomware Attack** | **34 destructive SQL operations** + `RECOVER_YOUR_DATA` ransom artifact |
 | **Impact** | Corporate database **destroyed** + **5 high-impact admin operations in ~3 seconds** |
-| **Detection Engineering** | **3 new Sentinel analytics** engineered and validated from observed attack behavior |
+| **Detection Engineering** | **3 new Sentinel analytics** engineered and validated |
 | **Hardening Result** | **0 Windows logons**, **0 uncontrolled destructive SQL**, remote `root@'%'` **removed** |
 | **Recovery** | **5,298 synthetic records restored** across 4 corporate tables |
 
@@ -25,53 +25,49 @@ I investigated the compromise, recovered and hardened the environment, then conv
 
 ---
 
-## Vulnerable vs. Hardened Security Outcomes
+## Architecture & Attack Path
 
-This project was designed as a controlled **before-and-after security experiment**: expose a deliberately vulnerable Azure/MySQL workload, measure the resulting attack activity and compromise, harden the same system, then measure the hardened environment.
+<img width="1774" height="887" alt="Azure ransomware honeypot architecture and attack flow" src="https://github.com/user-attachments/assets/c24df1bb-242f-4ad6-8416-978a0430a500" />
 
-| Security Metric | 🔴 Vulnerable Exposure | 🟢 Hardened Validation | Security Outcome |
-|---|---:|---:|---|
-| **Windows logon events** | **307** | **0** | No Windows logon activity observed |
-| **Failed Windows logons** | **239** | **0** | Brute-force/authentication noise eliminated in validation window |
-| **Successful Windows logons** | **47** | **0** | No successful Windows logons observed |
-| **Unique Windows remote IPs** | **10** | **0 observed** | Remote authentication activity absent |
-| **MySQL audit events** | **1,562** | **12** | **99.2% lower** captured MySQL event volume |
-| **Failed MySQL authentication attempts** | **73** | **0 observed*** | No failed MySQL authentication observed in validation |
-| **Successful external MySQL connections** | **152** | **0 expected by hardened design*** | External privileged path removed |
-| **External root connections** | **112** | **0 expected by hardened design*** | Remote root eliminated |
-| **Unique external MySQL source IPs** | **13** | **0 expected by hardened design*** | Internet-sourced MySQL access removed |
-| **Destructive SQL operations** | **34** | **0 uncontrolled** | No destructive attacker activity observed |
-| **High-impact MySQL admin operations** | **5** | **0 observed** | Destructive admin sequence absent |
-| **Database destruction** | **Yes** | **No** | Corporate database remained intact after recovery/hardening |
-| **Allow-all inbound NSG** | **Enabled** | **Removed** | Internet attack surface reduced |
-| **Windows Firewall** | **Disabled** | **All profiles enabled** | Host firewall restored |
-| **MySQL privileged account** | `root@'%'` | `root@localhost` only | Remote privileged authentication removed |
-| **Corporate data** | **Destroyed during extortion activity** | **Restored:** 372 credentials, 1,000 customers, 1,963 orders, 1,963 payments | Data integrity recovered |
-| **Detection coverage** | Primarily authentication-focused | **+3 behavior-based Sentinel analytics** | Post-authentication behavior now detected |
+**Intentional exposure:** broad inbound NSG access, Windows Firewall disabled, MySQL exposed on TCP/3306, and remote `root@'%'` authentication enabled.
 
-> **Measurement scope:** Vulnerable-side authentication and MySQL counts come from the defined vulnerable exposure query window. Hardened-side counts come from the captured post-hardening validation window and should not be interpreted as equal-duration traffic-rate comparisons. The **34 destructive SQL operations** above are the time-bounded exposure metric; the broader incident hunt identified **40 destructive SQL events** across the historical dataset.
-
-> \* Hardened MySQL remote-access outcomes are supported by the removal of `root@'%'`, retention of `root@localhost`, removal of the allow-all inbound NSG rule, and restoration of Windows Firewall. They are not presented as equivalent-duration Internet attack counts.
-
-**Result:** while vulnerable, the system recorded **307 Windows logon events, 1,562 MySQL events, 112 external root connections, 34 destructive SQL operations, and 5 high-impact administrative operations**, culminating in destructive database extortion. After containment, recovery, and hardening, the captured validation window showed **zero Windows logons, no uncontrolled destructive SQL, no observed high-impact administrative activity, and continued telemetry collection**.
-
-
----
-
-## Architecture & Telemetry
-
-<img width="1774" height="887" alt="Honeypot architect" src="https://github.com/user-attachments/assets/c24df1bb-242f-4ad6-8416-978a0430a500" />
-
+**Hardened state:** broad inbound exposure removed, Windows Firewall restored, remote MySQL root eliminated, database recovered, and behavior-based detections deployed.
 
 **Authentication telemetry showed access occurred. Database telemetry showed what the attacker actually did after access.**
 
 ---
 
-## Destructive Database Extortion
+## Vulnerable vs. Hardened Security Outcomes
+
+| Security Metric | 🔴 Vulnerable Exposure | 🟢 Hardened Validation | Security Outcome |
+|---|---:|---:|---|
+| **Windows logon events** | **307** | **0** | No Windows logon activity observed |
+| **Failed Windows logons** | **239** | **0** | Authentication noise absent in validation |
+| **Successful Windows logons** | **47** | **0** | No successful Windows logons observed |
+| **Unique Windows remote IPs** | **10** | **0 observed** | Remote authentication activity absent |
+| **MySQL audit events** | **1,562** | **12** | Telemetry remained operational after hardening |
+| **Failed MySQL authentications** | **73** | **0 observed*** | No failed MySQL authentication observed |
+| **Successful external MySQL connections** | **152** | **0 expected by hardened design*** | External privileged path removed |
+| **External root connections** | **112** | **0 expected by hardened design*** | Remote root eliminated |
+| **Unique external MySQL source IPs** | **13** | **0 expected by hardened design*** | Internet-sourced MySQL access removed |
+| **Destructive SQL operations** | **34** | **0 uncontrolled** | No destructive attacker activity observed |
+| **High-impact MySQL admin operations** | **5** | **0 observed** | Destructive admin sequence absent |
+| **Database destruction** | **Yes** | **No** | Database restored and remained intact |
+| **Allow-all inbound NSG** | **Enabled** | **Removed** | Attack surface reduced |
+| **Windows Firewall** | **Disabled** | **All profiles enabled** | Host firewall restored |
+| **MySQL privileged account** | `root@'%'` | `root@localhost` only | Remote privileged authentication removed |
+
+> **Measurement scope:** vulnerable-side counts come from the defined exposure query window; hardened-side counts come from the captured post-hardening validation window. They are not equal-duration traffic-rate comparisons. The **34 destructive operations** are the time-bounded exposure metric; the broader historical hunt identified **40 destructive SQL events**.
+
+> \* Hardened MySQL remote-access outcomes are supported by removal of `root@'%'`, retention of `root@localhost`, removal of the allow-all inbound NSG rule, and restoration of Windows Firewall.
+
+---
+
+## Incident Reconstruction
 
 At approximately **2026-09-17 16:57:19 UTC**, `root@45.8.17.198` established an SSL/TLS MySQL session as **ConnectionId 19**. Within roughly **94 seconds**, the session enumerated database objects, created an extortion artifact, inserted a cryptocurrency ransom message, and dropped the synthetic corporate tables `orders`, `credentials`, `customers`, and `payments`.
 
-Later telemetry captured database deletion followed by:
+Later telemetry captured a rapid administrative sequence:
 
 ```text
 RESET MASTER
@@ -81,70 +77,41 @@ GRANT SHUTDOWN ON *.* TO root@'%'
 SHUTDOWN
 ```
 
-This supports **MITRE ATT&CK T1485 — Data Destruction**. Encryption was not observed.
-
-### High-value evidence
-
-**Ransom/extortion artifact:** `10-post-attack-ransom-note.png`
-
-A focused MDE hunt found **no `mysqld.exe` child-process execution**, keeping the defensible compromise chain to:
+The destructive activity supports **MITRE ATT&CK T1485 — Data Destruction**. Encryption was not observed. A focused MDE hunt also found **no `mysqld.exe` child-process execution**, keeping the defensible compromise chain to:
 
 **Internet → privileged MySQL access → destructive SQL → database extortion**
+
+For the full chronology, see the **[attack timeline](timeline/attack-timeline.md)** and **[incident report](report/incident-report.md)**.
 
 ---
 
 ## Detection Engineering
 
-The original monitoring emphasized authentication. DFIR showed that the highest-impact behavior occurred **after authentication**, creating a detection gap. I converted the attack into three behavioral analytics.
+The original monitoring emphasized authentication. DFIR showed the highest-impact behavior occurred **after authentication**, so I converted the incident into three behavior-based analytics.
 
-### Detection 1 — MySQL Mass Destructive Database Activity
+| Detection | What it detects | Validation |
+|---|---|---|
+| **[MySQL Mass Destructive Database Activity](detections/mysql-mass-destructive-database-activity.kql)** | Bursts of `DROP TABLE` / `DROP DATABASE` activity | Historical attack + controlled DROP test |
+| **[MySQL High-Impact Administrative Activity](detections/mysql-high-impact-administrative-activity.kql)** | Log manipulation, privilege changes, and shutdown behavior | **5 actions in ~3 sec** |
+| **[External Privileged MySQL Authentication](detections/mysql-external-privileged-authentication.kql)** | Explicit external `root` sessions aggregated by source | Repeated privileged connections observed |
 
-The first hunt returned **40 destructive SQL events**. The production logic was tuned to aggregate by ConnectionId in five-minute windows, require **3+ destructive operations**, and enrich the session with authentication context.
+### Detection tuning that mattered
 
-Historical validation isolated:
+The initial destructive-SQL hunt returned **40 events**. I aggregated activity by ConnectionId, required **3+ destructive operations in five minutes**, and enriched sessions with authentication context.
 
-| Connection | User | Source IP | Operations |
-|---|---|---|---:|
-| 19 | root | 45.8.17.198 | 30 |
-| 58 | root | 64.89.163.80 | 4 |
-
-#### Detection tuning that mattered
-
-MySQL **reuses ConnectionIds**. Initial enrichment could therefore associate later legitimate activity with an older attacker IP. I corrected this by requiring authentication to occur **before the destructive activity and within 30 minutes**.
+MySQL **reuses ConnectionIds**, which initially allowed later legitimate activity to inherit an older attacker IP. I corrected the correlation by requiring authentication to occur **before the destructive activity and within 30 minutes**.
 
 **Raw events → session aggregation → auth enrichment → ConnectionId reuse discovered → temporal correlation → validated attribution**
 
-That is the core engineering lesson: **a rule that fires but attributes the wrong source is not a finished detection.**
+> **Engineering lesson:** a rule that fires but attributes the wrong source is not a finished detection.
 
-### Detection 2 — MySQL High-Impact Administrative Activity
+### End-to-End Validation
 
-Detects clusters of `RESET MASTER`, `PURGE BINARY LOGS`, privilege changes, and `SHUTDOWN`. Historical validation found **5 distinct high-impact actions across ConnectionIds 60–64 in approximately 3 seconds**.
+The destructive rule was safely validated against a disposable local database using four controlled `DROP TABLE` operations:
 
-### Detection 3 — External Privileged MySQL Authentication
+**Workbench → MySQL general log → AMA/DCR → `MySQLAudit_CL` → Sentinel analytics → High-severity incident**
 
-Detects explicit external `root` sessions and aggregates them by source IP. Historical validation identified repeated privileged connections, including a source producing **36 connections** in one aggregation window.
-
-### Sentinel rule suite
-
-The project retained the original authentication rules and added the three incident-derived analytics:
-
-```text
-HarryK - External Privileged MySQL Authentication
-HarryK - MySQL Mass Destructive Database Activity
-HarryK - MySQL High-Impact Administrative Activity
-HarryK-SQL-Successful-Login
-HarryK-success-logins
-```
-
-The destructive rule was then safely validated using a disposable local database and four controlled `DROP TABLE` operations.
-
-**Workbench → MySQL log → AMA/DCR → `MySQLAudit_CL` → Sentinel analytics → High-severity incident**
-
-The observed test-to-incident interval was approximately **9 minutes**, including ingestion, scheduled-rule execution, and Sentinel processing. This is a validation measurement—not a universal MTTD claim.
-
-**Final detection suite:** `evidence-detection-engineering07-sentinel-final-detection-suite.png`
-
-The KQL is preserved in the `detections/` directory so the engineering can be reviewed directly.
+The observed test-to-incident interval was approximately **9 minutes**, including ingestion, scheduled-rule execution, and Sentinel processing. This is a captured validation measurement—not a universal MTTD claim.
 
 ---
 
@@ -157,8 +124,8 @@ After confirming destructive activity, I:
 - restored **Windows Defender Firewall**;
 - preserved and then removed the attacker-created ransom database;
 - removed remote `root@'%'` and retained `root@localhost`;
-- restored `corp_db_prod02` from the known-good synthetic-data script;
-- validated the recovered data.
+- restored `corp_db_prod02` from a known-good synthetic-data script;
+- validated **5,298 restored records**.
 
 | Restored table | Rows |
 |---|---:|
@@ -167,25 +134,35 @@ After confirming destructive activity, I:
 | `orders` | 1,963 |
 | `payments` | 1,963 |
 
-**Recovery evidence:** `evidence-recovery02-restored-data-validation.png`
+SOAR containment was designed but **not represented as implemented**: cyber-range RBAC blocked the required Logic App and API-connection write permissions.
 
 ---
 
-## Before vs. After
+## Reproduce the Lab
 
-| Control / condition | Exposure state | Hardened state |
-|---|---|---|
-| NSG | Broad inbound exposure | Default inbound deny / no custom allow-all |
-| Windows Firewall | Disabled during controlled exposure | Domain, Private, Public profiles enabled |
-| MySQL privileged remote access | `root@'%'` present | `root@localhost` only |
-| Database state | Corporate tables destroyed; extortion artifact present | Synthetic corporate database restored and validated |
-| Detection coverage | Primarily authentication-focused | Post-auth destructive/admin behavior + external privileged auth |
-| Response | Manual investigation | Sentinel incident workflow; SOAR design attempted but cyber-range RBAC blocked Logic App deployment |
+The project can be reproduced at a high level without recreating the destructive Internet activity:
+
+1. Deploy an Azure Windows VM and install MySQL with synthetic data.
+2. Enable MySQL general/audit logging and onboard the endpoint to Defender for Endpoint.
+3. Configure **AMA/DCR → Log Analytics** ingestion for Windows, endpoint, network, and MySQL telemetry.
+4. Enable Microsoft Sentinel and deploy the KQL analytics from **[`detections/`](detections/)**.
+5. Generate controlled benign authentication and disposable-database test events.
+6. Validate **source → telemetry → analytics rule → Sentinel incident**.
+7. Apply the hardened controls and confirm telemetry/detections remain operational.
+
+> Destructive behavior in this project was observed in an authorized cyber range. Reproduction should use controlled test data and disposable resources.
 
 ---
 
+## Engineering Artifacts
 
-## What This Project Demonstrates
+- **[Attack timeline](timeline/attack-timeline.md)** — incident chronology and key attacker actions
+- **[Incident report](report/incident-report.md)** — formal findings, response, and lessons learned
+- **[Mass destructive SQL detection](detections/mysql-mass-destructive-database-activity.kql)**
+- **[High-impact administrative activity detection](detections/mysql-high-impact-administrative-activity.kql)**
+- **[External privileged MySQL authentication detection](detections/mysql-external-privileged-authentication.kql)**
+
+### What This Project Demonstrates
 
 **DFIR:** evidence preservation, scoping, reconstruction, containment, eradication, recovery  
 **Detection Engineering:** KQL, behavioral analytics, temporal correlation, tuning, false-positive analysis, validation  
@@ -193,26 +170,13 @@ After confirming destructive activity, I:
 **Threat Hunting:** authentication, database, endpoint, process, and network correlation  
 **Azure Security:** NSG hardening, Defender for Endpoint, Sentinel, Log Analytics
 
-Detailed evidence remains in the repository, with the full chronology in `timeline/attack-timeline.md` and formal findings in `report/incident-report.md`.
-
-### Lessons that changed the detection strategy
+### Lessons Learned
 
 - **Access is not impact.** Authentication alerts did not explain what happened after compromise; SQL telemetry did.
 - **Telemetry quality drives DFIR quality.** Custom database logging made the destructive sequence reconstructable.
 - **Detection tuning is engineering.** ConnectionId reuse required temporal correlation, not another keyword.
 - **Ransom notes are attacker claims, not evidence.** The cryptocurrency/extortion artifact was real; exfiltration was not proven.
 - **Incidents should improve controls.** Observed attacker behavior became new detections and the original attack path was hardened.
-
----
-
-## Skills Demonstrated
-
-**DFIR:** evidence preservation, timeline reconstruction, scoping, containment, eradication, recovery, evidence-backed conclusions  
-**Detection Engineering:** KQL, rule tuning, temporal correlation, entity enrichment, historical validation, false-positive analysis  
-**Microsoft Security:** Sentinel, Defender for Endpoint, Log Analytics, Azure Monitor Agent  
-**Cloud / Network Security:** Azure NSGs, firewall hardening, attack-path reduction  
-**Database Security:** MySQL authentication analysis, audit telemetry, destructive-query detection, privileged-access hardening  
-**Threat Hunting:** authentication, process, network, and database telemetry correlation
 
 ---
 
