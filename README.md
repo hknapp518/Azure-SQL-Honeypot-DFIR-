@@ -60,32 +60,8 @@ This project was designed as a controlled **before-and-after security experiment
 
 ## Architecture & Telemetry
 
-The architecture was built around **evidence flow**, not simply a VM feeding a SIEM.
+<img width="1774" height="887" alt="Honeypot architect" src="https://github.com/user-attachments/assets/c24df1bb-242f-4ad6-8416-978a0430a500" />
 
-```mermaid
-flowchart LR
-    A["Internet / Attack Surface"] --> B["Azure NSG"]
-    B --> C["CORP-DB-PROD02<br/>Windows + MySQL"]
-    C --> D["MDE<br/>Process • Logon • Network"]
-    C --> E["MySQL General Log"]
-    E --> F["AMA + DCR"]
-    F --> G["Log Analytics<br/>MySQLAudit_CL"]
-    D --> H["Microsoft Sentinel"]
-    G --> H
-    H --> I["Threat Hunting"]
-    H --> J["Analytics + Incidents"]
-    I --> K["DFIR Reconstruction"]
-    K --> L["Detection Engineering"]
-    L --> J
-    K --> M["Containment / Recovery / Hardening"]
-```
-
-| Telemetry | What it proved |
-|---|---|
-| **`MySQLAudit_CL`** | Source IP, user, ConnectionId, enumeration, destructive SQL, extortion artifacts, admin commands |
-| **MDE** | Windows logons, processes, files, network activity, host scoping |
-| **Sentinel** | Cross-source hunting, analytics, incidents, validation |
-| **Azure controls** | Vulnerable exposure and post-incident hardening |
 
 **Authentication telemetry showed access occurred. Database telemetry showed what the attacker actually did after access.**
 
