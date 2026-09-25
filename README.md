@@ -1,204 +1,353 @@
-# Azure SQL Honeypot — Detection Engineering & DFIR
+# Azure MySQL Honeypot — Detection Engineering & DFIR
 
-An Azure security project designed to capture, detect, investigate, and respond to real-world attacks against an intentionally exposed Windows/MySQL honeypot.
+> **Incident outcome:** An intentionally exposed Azure Windows/MySQL workload was compromised by external infrastructure. MySQL audit telemetry captured privileged access, database enumeration, destructive SQL, extortion artifacts, and a later cluster of high-impact administrative commands. I reconstructed the activity, contained and recovered the host, hardened the original attack path, then converted the observed behavior into Microsoft Sentinel detections and validated them against captured telemetry.
 
-The environment integrates Microsoft Defender for Endpoint, Microsoft Sentinel, Azure Monitor Agent, Log Analytics, custom MySQL telemetry, and KQL analytics rules to provide visibility across endpoint authentication, network activity, and database-level attacker behavior.
+**Focus:** DFIR • Detection Engineering • Threat Hunting • Microsoft Sentinel • Defender for Endpoint • KQL • Azure • MySQL
 
-> **Objective:** Observe what happens after an attacker discovers an exposed system, reconstruct the attack using telemetry, convert observed behavior into detections, and harden the environment based on the findings.
-
-<img width="1536" height="1024" alt="Azure SQL Honeypot Architecture" src="https://github.com/user-attachments/assets/74d1c6a7-3e0a-49f8-86dc-4aa891f1eaa7" />
+> **Safety:** This lab used synthetic data in a controlled cyber-range environment. Indicators shown here are preserved for defensive analysis. No claim of data exfiltration is made unless telemetry supports it.
 
 ---
 
-## Project Status
+## Executive Summary
 
-- [x] **Phase 1** — Windows honeypot deployed
-- [x] **Phase 2** — MySQL deployed and populated with synthetic corporate data
-- [x] **Phase 3** — MySQL telemetry ingested into Log Analytics
-- [x] **Phase 4** — Sentinel detections deployed and validated
-- [x] **Phase 5** — Controlled 12-hour exposure
-- [x] **Phase 6** — Breach detected
-- [x] **Phase 7** — Threat hunting and investigation
-- [x] **Phase 8** — Containment
-- [x] **Phase 9** — Eradication and recovery
-- [x] **Phase 10** — DFIR reporting
+This project was built to answer a practical security question: **if an exposed database is compromised, can the attack be reconstructed well enough to drive better detections and hardening?**
 
----
+The environment combined a Windows Azure VM, MySQL, Microsoft Defender for Endpoint (MDE), Azure Monitor Agent, Log Analytics, Microsoft Sentinel, and custom `MySQLAudit_CL` telemetry.
 
-## Architecture
+During controlled exposure, external hosts authenticated to MySQL as `root`. One high-confidence destructive session from **45.8.17.198** enumerated database objects, created an extortion-related artifact, and dropped tables in the synthetic corporate database. Later telemetry captured database deletion plus binary-log manipulation, privilege changes, and MySQL shutdown activity.
 
-The lab was designed as an intentionally vulnerable Azure workload with multiple telemetry sources feeding a centralized Log Analytics workspace and Microsoft Sentinel.
+The response did not stop at finding the compromise. I preserved evidence, hunted across database and endpoint telemetry, isolated the device, removed the vulnerable configuration, restored the synthetic database, engineered new Sentinel analytics, tuned correlation logic, and validated the hardened environment.
 
-### Security Stack
+### What the investigation established
 
-| Component | Purpose |
+| Finding | Evidence-backed conclusion |
 |---|---|
-| Azure VM | Windows honeypot host |
-| MySQL | Internet-targeted database containing synthetic data |
-| Network Security Group | Controlled network exposure |
-| Microsoft Defender for Endpoint | Endpoint telemetry and investigation |
-| Azure Monitor Agent | Log collection |
-| Log Analytics Workspace | Centralized telemetry repository |
-| Microsoft Sentinel | SIEM, threat hunting, alerting, and investigation |
-| `MySQLAudit_CL` | Custom database query/activity telemetry |
-| KQL | Threat hunting and detection engineering |
+| Privileged external MySQL access | Explicit `Connect root@<external IP>` records were captured |
+| Destructive database activity | `DROP TABLE` / `DROP DATABASE` commands were logged |
+| Extortion artifact | `RECOVER_YOUR_DATA` database/table and ransom message were observed |
+| High-impact admin sequence | `RESET MASTER`, `PURGE BINARY LOGS`, privilege changes, and `SHUTDOWN` clustered within seconds |
+| Host execution from MySQL | **Not observed** — hunting found no `mysqld.exe` child-process telemetry |
+| Exfiltration | **Not proven** — the ransom message's backup/download claim is not evidence of data leaving the host |
+| Recovery | Corporate schema restored and row counts validated |
+| Detection improvement | Three behavior-based Sentinel detections were created/tuned from the incident |
 
 ---
 
-## Attack Scenario
+## Architecture & Telemetry
 
-The honeypot contained **synthetic corporate data only**, including simulated employee and financial records.
+```text
+Internet
+   |
+Azure NSG
+   |
+CORP-DB-PROD02 (Windows / MySQL)
+   |-- Microsoft Defender for Endpoint --> endpoint/logon/network telemetry
+   |-- MySQL general log
+   |       |
+   |       +--> Azure Monitor Agent / DCR
+   |                |
+   |                +--> Log Analytics: MySQLAudit_CL
+   |
+   +------------------------------------> Microsoft Sentinel
+                                             |
+                                             +--> KQL hunting
+                                             +--> Scheduled analytics
+                                             +--> Incidents
+```
 
-The system was intentionally configured with weakened security controls during the observation phase to determine how an external attacker would discover and interact with the environment.
+| Component | Role |
+|---|---|
+| Azure VM | Windows honeypot / database host |
+| MySQL 8 | Synthetic corporate database |
+| Microsoft Defender for Endpoint | Endpoint, logon, process, file, and network telemetry |
+| Azure Monitor Agent + DCR | Custom MySQL log collection |
+| Log Analytics | Central telemetry store |
+| `MySQLAudit_CL` | Custom database authentication/query telemetry |
+| Microsoft Sentinel | SIEM, analytics, incidents, hunting |
+| KQL | Detection engineering and DFIR analysis |
 
-During the exposure window, an attacker successfully compromised the MySQL root account.
+---
 
-The attacker subsequently:
+## Incident Reconstruction
 
-1. Successfully authenticated to the database.
-2. Enumerated available databases and tables.
-3. Accessed the synthetic database structure.
-4. Executed destructive SQL commands.
-5. Deleted database tables.
-6. Created a ransom message demanding cryptocurrency payment.
+### 1. Initial access and authentication
 
-Because MySQL query telemetry was being collected, the investigation provided visibility beyond the successful authentication event.
+External systems repeatedly attempted authentication against the exposed environment. MySQL audit records later showed explicit external `root` connections.
 
-The database logs showed the actual SQL activity performed by the attacker.
+A parser caveat mattered here: a generic MySQL `Connect` event is **not automatically proof of compromise**. Strong attribution required an explicit `Connect user@IP` record and, where possible, subsequent query activity tied to the same connection.
 
-### Key DFIR Finding
+### 2. Destructive session — ConnectionId 19
 
-The ransom message implied that the database had been encrypted.
+At approximately **2026-09-17 16:57:19 UTC**, MySQL recorded:
 
-Telemetry demonstrated that this was **not what occurred**.
+- `root@45.8.17.198` using SSL/TLS
+- database/table enumeration
+- creation of `corp_db_prod02.RECOVER_YOUR_DATA_info`
+- insertion of an extortion-related artifact
+- deletion of the synthetic corporate tables:
+  - `orders`
+  - `credentials`
+  - `customers`
+  - `payments`
+- additional destructive activity against the `world` database
+- session termination around **16:58:53 UTC**
 
-The attacker had issued destructive SQL commands that removed the underlying data. This distinction was visible through the captured MySQL query logs and demonstrates why authentication telemetry alone is insufficient when investigating database compromise.
+The roughly 94-second sequence is consistent with automated destructive database-extortion behavior.
+
+### 3. Later high-impact sequence
+
+A later cluster included:
+
+```text
+DROP DATABASE ...
+RESET MASTER
+PURGE BINARY LOGS ...
+REVOKE ALL PRIVILEGES, GRANT OPTION FROM root@'%'
+GRANT SHUTDOWN ON *.* TO root@'%'
+SHUTDOWN
+```
+
+The activity was valuable for detection engineering because the operations occurred across multiple connection IDs within a very short period.
+
+### 4. Attribution discipline
+
+The endpoint also contained known cyber-range simulation artifacts. Those were excluded from attacker attribution rather than mixed into the incident story.
+
+A focused MDE hunt found **no evidence of `mysqld.exe` spawning Windows child processes**. Therefore the defensible compromise chain is:
+
+**Internet → MySQL → privileged database access → destructive SQL/extortion activity**
+
+—not unproven host-level code execution.
 
 ---
 
 ## Detection Engineering
 
-One of the primary goals of the project was to convert observed attacker behavior into reusable detections.
+The original monitoring emphasized authentication. The incident showed that the most damaging behavior occurred **after authentication**, so the post-incident work focused on behavioral detections.
 
-Instead of stopping after identifying the compromise, KQL analytics were developed around behaviors observed during the incident.
+### Detection 1 — MySQL Mass Destructive Database Activity
 
-### Detection 1 — Brute Force Followed by Successful Authentication
+**Goal:** Detect bursts of destructive database operations from the same MySQL session.
 
-**Purpose:** Identify repeated failed authentication attempts followed by a successful login.
+**Logic:** Multiple `DROP TABLE` / `DROP DATABASE` operations in a five-minute window, enriched with temporally related authentication data.
 
-**Severity:** High
+**MITRE ATT&CK:** **Impact — T1485 Data Destruction**
 
-**MITRE ATT&CK:** Credential Access / Brute Force
+The first version found **40 destructive SQL events**, but also included legitimate remediation activity. I tuned it by:
+
+1. grouping by ConnectionId and five-minute windows;
+2. requiring at least three destructive operations;
+3. enriching with authentication context;
+4. identifying a **ConnectionId reuse problem** that could cause stale IP attribution;
+5. adding a 30-minute temporal correlation requirement.
+
+Final historical validation correctly highlighted:
+
+| Connection | User | Source | Destructive operations |
+|---|---|---:|---:|
+| 19 | root | 45.8.17.198 | 30 |
+| 58 | root | 64.89.163.80 | 4 |
+
+This tuning sequence is important: **raw detection → aggregation → enrichment → correlation bug discovered → temporal correction → validated attribution.**
+
+> An early rule screenshot mapped this behavior to Data Encrypted for Impact. That mapping was corrected in the live rule to **T1485 Data Destruction** because the telemetry shows deletion/destruction, not encryption.
+
+### Detection 2 — MySQL High-Impact Administrative Activity
+
+**Goal:** Detect a cluster of distinct high-impact administrative operations.
+
+Historical telemetry produced one high-confidence cluster:
+
+- **5 suspicious operations**
+- **5 distinct actions**
+- Connection IDs **60–64**
+- approximately **3 seconds** from first to last event
+
+Actions included `RESET MASTER`, `PURGE BINARY LOGS`, privilege revocation, shutdown privilege assignment, and MySQL shutdown.
+
+**MITRE ATT&CK:** T1485 is used in the incident context where the cluster accompanied destructive database activity; the individual administrative commands are retained as behavioral evidence rather than over-mapped to unsupported techniques.
+
+### Detection 3 — External Privileged MySQL Authentication
+
+**Goal:** Surface explicit external MySQL connections using the privileged `root` account.
+
+The rule extracts:
+
+- Username
+- Source IP
+- Connection ID
+- First/last seen
+- Connection count
+
+Historical validation identified repeated privileged connections from multiple external addresses, including a high-volume source with **36 connections** in one aggregation window.
+
+### Sentinel rule suite
+
+The project retained the original authentication rules and added the three incident-derived analytics:
+
+```text
+HarryK - External Privileged MySQL Authentication
+HarryK - MySQL Mass Destructive Database Activity
+HarryK - MySQL High-Impact Administrative Activity
+HarryK-SQL-Successful-Login
+HarryK-success-logins
+```
+
+The destructive-database rule was also tested with a **controlled local test database**, generating four benign `DROP TABLE` operations. Sentinel ingested the events and generated the expected high-severity incident, validating the detection pipeline without re-exposing or re-ransoming the hardened host.
 
 ---
 
-### Detection 2 — Destructive Database Activity
+## DFIR Workflow
 
-**Purpose:** Identify rapid deletion of multiple database objects.
+```text
+Build
+  ↓
+Instrument
+  ↓
+Baseline
+  ↓
+Controlled Exposure
+  ↓
+Detect
+  ↓
+Hunt
+  ↓
+Reconstruct
+  ↓
+Contain
+  ↓
+Eradicate
+  ↓
+Recover
+  ↓
+Engineer Detections
+  ↓
+Validate
+  ↓
+Harden
+```
 
-Example logic:
+### Evidence sources
 
-`3+ destructive table operations within 3 minutes`
-
-This behavior would be highly unusual during normal database operation and may indicate destructive attacker activity.
-
-**Severity:** High
+- `MySQLAudit_CL`
+- Defender `DeviceLogonEvents`
+- Defender `DeviceNetworkEvents`
+- Defender process/file telemetry
+- Sentinel analytics and incidents
+- MySQL Workbench validation
+- Azure NSG configuration
+- Windows Defender Firewall
+- MDE investigation package
 
 ---
 
-### Detection 3 — Suspicious SQL Commands
-
-Monitors database telemetry for potentially dangerous commands such as:
-
-- `DROP`
-- `DELETE`
-- `ALTER`
-
-The detection provides visibility into unusual database modification activity and can be correlated with authentication and endpoint telemetry during an investigation.
-
----
-
-## Investigation Workflow
-
-The incident was investigated across multiple telemetry sources rather than treating individual alerts independently.
-
-**Authentication → Endpoint → Network → Database → Sentinel correlation**
-
-KQL was used to answer questions such as:
-
-- Which accounts were targeted?
-- Did authentication eventually succeed?
-- What activity occurred after authentication?
-- What SQL commands were executed?
-- Were database objects modified or deleted?
-- Did the endpoint exhibit additional suspicious activity?
-- Was the activity isolated to the honeypot?
-- What indicators should become future detections?
-
----
-
-## Incident Response
-
-### Identification
-
-Sentinel and Log Analytics telemetry identified suspicious authentication and database activity.
+## Containment, Eradication & Recovery
 
 ### Containment
 
-The compromised system was isolated and external exposure was removed.
+After confirming unauthorized privileged MySQL access and destructive database activity, the device was isolated through Microsoft Defender for Endpoint and the broad exposure was removed.
 
 ### Eradication
 
-Weak credentials and intentionally vulnerable configurations used during the honeypot phase were removed.
+Remediation included:
+
+- removing the dangerous allow-all inbound NSG rule;
+- restoring Windows Defender Firewall;
+- removing remote `root@'%'` access;
+- retaining only `root@localhost`;
+- removing the attacker-created ransom database after evidence preservation.
 
 ### Recovery
 
-The environment was rebuilt/hardened and security controls were reviewed before restoring normal connectivity.
+The synthetic corporate database was restored from the known-good build script and validated by row count:
 
-### Lessons Learned
+| Table | Restored rows |
+|---|---:|
+| `credentials` | 372 |
+| `customers` | 1,000 |
+| `orders` | 1,963 |
+| `payments` | 1,963 |
 
-The investigation demonstrated that detecting the successful login alone would not have explained the full incident.
-
-Database-level telemetry revealed what the attacker actually did **after gaining access**.
-
-That finding drove additional Sentinel detection engineering and informed the hardening phase.
+The objective was not simply to make MySQL run again; it was to demonstrate that the expected data structure returned after eradication.
 
 ---
 
-## Hardening
+## Before vs. After
 
-Following the investigation, the environment moved from intentionally vulnerable to hardened.
+| Control / condition | Exposure state | Hardened state |
+|---|---|---|
+| NSG | Broad inbound exposure | Default inbound deny / no custom allow-all |
+| Windows Firewall | Disabled during controlled exposure | Domain, Private, Public profiles enabled |
+| MySQL privileged remote access | `root@'%'` present | `root@localhost` only |
+| Database state | Corporate tables destroyed; extortion artifact present | Synthetic corporate database restored and validated |
+| Detection coverage | Primarily authentication-focused | Post-auth destructive/admin behavior + external privileged auth |
+| Response | Manual investigation | Sentinel incident workflow; SOAR design attempted but cyber-range RBAC blocked Logic App deployment |
 
-Changes included:
+### SOAR limitation
 
-- Restricting unnecessary inbound access
-- Removing broad RDP exposure
-- Strengthening authentication controls
-- Applying least-privilege principles
-- Reviewing NSG rules
-- Maintaining Defender monitoring
-- Retaining MySQL audit telemetry
-- Deploying detections derived from observed attacker behavior
-- Documenting indicators, findings, and remediation actions
+A Sentinel/Logic Apps response playbook was designed for the high-severity destructive alert. Deployment was blocked by the cyber-range RBAC model because the student identity lacked `Microsoft.Logic/workflows/write` and `Microsoft.Web/connections/write`. I documented the limitation rather than representing an automation as deployed.
+
+---
+
+## Key Lessons Learned
+
+1. **A successful login is only the beginning of the investigation.** Database query telemetry exposed the damaging post-authentication behavior.
+2. **Detection tuning matters as much as detection creation.** ConnectionId reuse initially created stale attribution; time-bounded correlation corrected it.
+3. **Do not let the ransom note write the incident report.** The note claimed backup/download behavior, but telemetry did not prove exfiltration.
+4. **ATT&CK mappings should follow evidence.** Destructive SQL supported T1485 Data Destruction; encryption was not observed.
+5. **Known lab activity must be separated from attacker activity.** Cyber-range simulation artifacts were excluded from external attacker attribution.
+6. **High severity does not automatically justify automated containment.** Legitimate DBA activity can include destructive commands, so context and confidence still matter.
+7. **The incident should improve the control plane.** Observed behaviors became new analytics and the vulnerable attack path was removed.
+
+---
+
+## Repository Structure
+
+```text
+.
+├── README.md
+├── detections/
+│   ├── successful-vm-logon.kql
+│   ├── successful-mysql-logon.kql
+│   ├── mysql-mass-destructive-database-activity.kql
+│   ├── mysql-high-impact-administrative-activity.kql
+│   └── mysql-external-privileged-authentication.kql
+├── hunting/
+│   ├── pre-exposure-baseline.kql
+│   └── pre-exposure-baseline-results.md
+├── timeline/
+│   └── attack-timeline.md
+├── report/
+│   └── incident-report.md
+└── evidence/
+    ├── pre-exposure/
+    ├── attack/
+    ├── containment/
+    ├── remediation/
+    ├── recovery/
+    ├── detection-engineering/
+    └── validation/
+```
 
 ---
 
 ## Skills Demonstrated
 
-This project demonstrates hands-on experience with:
-
-**Microsoft Sentinel • Microsoft Defender for Endpoint • Azure • Log Analytics • KQL • SIEM • DFIR • Threat Hunting • Detection Engineering • Incident Response • MySQL Security • Vulnerability Remediation • Network Security • MITRE ATT&CK**
+**DFIR:** evidence preservation, timeline reconstruction, scoping, containment, eradication, recovery, evidence-backed conclusions  
+**Detection Engineering:** KQL, rule tuning, temporal correlation, entity enrichment, historical validation, false-positive analysis  
+**Microsoft Security:** Sentinel, Defender for Endpoint, Log Analytics, Azure Monitor Agent  
+**Cloud / Network Security:** Azure NSGs, firewall hardening, attack-path reduction  
+**Database Security:** MySQL authentication analysis, audit telemetry, destructive-query detection, privileged-access hardening  
+**Threat Hunting:** authentication, process, network, and database telemetry correlation
 
 ---
 
-## Key Takeaway
+## Interview-Length Project Summary
 
-The objective of this project was not simply to expose a vulnerable VM and collect attacks.
+> I built an Azure Windows/MySQL honeypot with Defender for Endpoint, Sentinel, and custom MySQL telemetry. During controlled exposure, external infrastructure gained privileged MySQL access and performed destructive database-extortion activity. I reconstructed the attack from authentication and SQL telemetry, isolated and recovered the system, removed the vulnerable remote-root and network configuration, then converted the observed behavior into three new Sentinel detections. While tuning the detections I found a ConnectionId-reuse correlation issue, corrected it with time-bounded enrichment, and validated the final rules against both historical attack telemetry and controlled benign testing.
 
-The project followed the security lifecycle from:
+---
 
-**Exposure → Telemetry → Detection → Investigation → Containment → Eradication → Recovery → Detection Improvement**
+## Disclaimer
 
-The most significant finding was that database-level telemetry revealed attacker behavior that would have been missed by relying solely on authentication or endpoint alerts.
-
-The observed attack was then used to improve detections and harden the environment, turning a honeypot experiment into an end-to-end detection engineering and DFIR exercise.
+This project was performed in an authorized cyber-range/lab using synthetic data for defensive security research and portfolio development. External indicators are documented only as observed telemetry. No offensive activity was directed at third-party systems.

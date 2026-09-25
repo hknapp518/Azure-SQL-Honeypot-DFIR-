@@ -1,0 +1,34 @@
+let MyDevice = "CORP-DB-PROD02";
+
+MySQLAudit_CL
+| extend RawData = replace_string(RawData, "\t", " ")
+| extend DeviceName = tostring(split(_ResourceId, "/")[-1])
+| where DeviceName =~ MyDevice
+| where RawData has_any (
+    "RESET MASTER",
+    "PURGE BINARY LOGS",
+    "REVOKE ALL PRIVILEGES",
+    "GRANT SHUTDOWN",
+    "SHUTDOWN"
+)
+| extend ConnectionId = extract(@"^\S+\s+(\d+)\s+", 1, RawData)
+| extend SuspiciousAction = case(
+    RawData has "RESET MASTER", "RESET MASTER",
+    RawData has "PURGE BINARY LOGS", "PURGE BINARY LOGS",
+    RawData has "REVOKE ALL PRIVILEGES", "PRIVILEGE REVOCATION",
+    RawData has "GRANT SHUTDOWN", "SHUTDOWN PRIVILEGE GRANTED",
+    RawData has "SHUTDOWN", "MYSQL SHUTDOWN",
+    "Other"
+)
+| summarize
+    SuspiciousOperations = count(),
+    DistinctActions = dcount(SuspiciousAction),
+    Actions = make_set(SuspiciousAction),
+    ConnectionIds = make_set(ConnectionId),
+    Commands = make_set(RawData, 50),
+    FirstSeen = min(TimeGenerated),
+    LastSeen = max(TimeGenerated)
+    by DeviceName, bin(TimeGenerated, 5m)
+| where DistinctActions >= 3
+| project FirstSeen, LastSeen, DeviceName, SuspiciousOperations,
+          DistinctActions, Actions, ConnectionIds, Commands
