@@ -35,36 +35,82 @@ The response did not stop at finding the compromise. I preserved evidence, hunte
 
 ## Architecture & Telemetry
 
-```text
-Internet
-   |
-Azure NSG
-   |
-CORP-DB-PROD02 (Windows / MySQL)
-   |-- Microsoft Defender for Endpoint --> endpoint/logon/network telemetry
-   |-- MySQL general log
-   |       |
-   |       +--> Azure Monitor Agent / DCR
-   |                |
-   |                +--> Log Analytics: MySQLAudit_CL
-   |
-   +------------------------------------> Microsoft Sentinel
-                                             |
-                                             +--> KQL hunting
-                                             +--> Scheduled analytics
-                                             +--> Incidents
+Rather than treating the lab as a single VM feeding a SIEM, the project separates the environment into **exposure, workload, collection, analysis, and response planes**. This makes it easier to see where evidence originated and how it moved through the investigation.
+
+```mermaid
+flowchart LR
+    subgraph E["EXPOSURE PLANE"]
+        I["Internet Sources"]
+        N["Azure NSG"]
+    end
+
+    subgraph W["WORKLOAD PLANE"]
+        V["CORP-DB-PROD02<br/>Windows"]
+        M["MySQL 8<br/>Synthetic Corporate DB"]
+    end
+
+    subgraph C["COLLECTION PLANE"]
+        D["Microsoft Defender<br/>for Endpoint"]
+        G["MySQL General Log"]
+        A["Azure Monitor Agent<br/>+ DCR"]
+    end
+
+    subgraph X["ANALYSIS PLANE"]
+        L["Log Analytics<br/>MySQLAudit_CL"]
+        S["Microsoft Sentinel"]
+        K["KQL Hunting<br/>+ Correlation"]
+    end
+
+    subgraph R["RESPONSE / IMPROVEMENT"]
+        Q["Incident Investigation"]
+        H["Containment + Hardening"]
+        T["Detection Engineering<br/>+ Validation"]
+    end
+
+    I --> N --> V --> M
+    V --> D
+    M --> G --> A --> L
+    D --> S
+    L --> S --> K --> Q --> H --> T
+    T -. "new analytics" .-> S
 ```
 
-| Component | Role |
-|---|---|
-| Azure VM | Windows honeypot / database host |
-| MySQL 8 | Synthetic corporate database |
-| Microsoft Defender for Endpoint | Endpoint, logon, process, file, and network telemetry |
-| Azure Monitor Agent + DCR | Custom MySQL log collection |
-| Log Analytics | Central telemetry store |
-| `MySQLAudit_CL` | Custom database authentication/query telemetry |
-| Microsoft Sentinel | SIEM, analytics, incidents, hunting |
-| KQL | Detection engineering and DFIR analysis |
+### Telemetry Coverage Matrix
+
+| Security question | Primary telemetry | What it established |
+|---|---|---|
+| Who attempted or obtained access? | MySQL general log / `MySQLAudit_CL`, `DeviceLogonEvents` | Explicit database users, source IPs, connection IDs, Windows logon activity |
+| What happened after authentication? | `MySQLAudit_CL` | Enumeration, destructive SQL, extortion artifacts, administrative commands |
+| Did activity extend into Windows execution? | MDE process telemetry | No observed `mysqld.exe` child-process execution |
+| Was there supporting network activity? | `DeviceNetworkEvents` | Host network telemetry for scoping and correlation |
+| How did the SIEM turn behavior into incidents? | Sentinel scheduled analytics | Authentication, destructive activity, high-impact admin activity |
+| Did the hardened system retain visibility? | MDE + AMA/DCR + Sentinel | Security telemetry remained operational after remediation |
+
+### Evidence Flow
+
+```text
+MySQL authentication / SQL
+        │
+        ▼
+mysql_general.log
+        │
+        ▼
+Azure Monitor Agent + DCR ──────► MySQLAudit_CL
+                                      │
+MDE endpoint telemetry ───────────────┤
+                                      ▼
+                              Microsoft Sentinel
+                                      │
+                       ┌──────────────┼──────────────┐
+                       ▼              ▼              ▼
+                    Hunting       Analytics       Incidents
+                       │              │              │
+                       └──────────────┴──────┬───────┘
+                                             ▼
+                                  DFIR / Detection Tuning
+```
+
+This architecture intentionally preserved **database-level telemetry alongside endpoint telemetry**. That distinction became critical: endpoint data helped scope the host, while MySQL query telemetry established the destructive actions performed after privileged database access.
 
 ---
 
@@ -339,12 +385,6 @@ A Sentinel/Logic Apps response playbook was designed for the high-severity destr
 **Cloud / Network Security:** Azure NSGs, firewall hardening, attack-path reduction  
 **Database Security:** MySQL authentication analysis, audit telemetry, destructive-query detection, privileged-access hardening  
 **Threat Hunting:** authentication, process, network, and database telemetry correlation
-
----
-
-## Interview-Length Project Summary
-
-> I built an Azure Windows/MySQL honeypot with Defender for Endpoint, Sentinel, and custom MySQL telemetry. During controlled exposure, external infrastructure gained privileged MySQL access and performed destructive database-extortion activity. I reconstructed the attack from authentication and SQL telemetry, isolated and recovered the system, removed the vulnerable remote-root and network configuration, then converted the observed behavior into three new Sentinel detections. While tuning the detections I found a ConnectionId-reuse correlation issue, corrected it with time-bounded enrichment, and validated the final rules against both historical attack telemetry and controlled benign testing.
 
 ---
 
