@@ -1,4 +1,4 @@
-# Azure Ransomware & DFIR & Detection Engineering
+# Azure Ransomware with DFIR & Detection Engineering
 
 > **Vulnerable Azure workload → ransomware attack → DFIR → Sentinel detections → hardened validation**
 
