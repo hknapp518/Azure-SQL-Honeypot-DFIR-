@@ -173,6 +173,35 @@ After confirming destructive activity, I:
 
 ---
 
+## Security Outcomes & Metrics
+
+The strongest outcome of the project is the measurable change between the **compromised exposure state** and the **recovered, hardened, detection-enabled state**.
+
+| Metric / Control | Exposure / Incident | Post-Hardening |
+|---|---|---|
+| **MySQL privileged access** | Remote `root@'%'` enabled | `root@localhost` only |
+| **Network exposure** | Allow-all inbound NSG | Custom allow-all removed |
+| **Windows Firewall** | Disabled during controlled exposure | Domain / Private / Public enabled |
+| **Destructive SQL** | **40 events** identified during initial detection hunt | No uncontrolled destructive activity; controlled validation only |
+| **High-impact admin activity** | **5 distinct actions in ~3 seconds** | Behavior converted into Sentinel detection coverage |
+| **External privileged MySQL activity** | Multiple external `root` sources observed | Remote privileged access eliminated |
+| **Corporate database** | Corporate tables/databases destroyed | Known-good schema restored |
+| **`credentials`** | Destroyed | **372 rows restored** |
+| **`customers`** | Destroyed | **1,000 rows restored** |
+| **`orders`** | Destroyed | **1,963 rows restored** |
+| **`payments`** | Destroyed | **1,963 rows restored** |
+| **Detection coverage** | Primarily authentication-focused | **3 new behavior-based Sentinel analytics** |
+| **Controlled detection test** | — | **4 `DROP TABLE` events → High-severity Sentinel incident** |
+| **Observed validation interval** | — | **~9 min from test activity to incident creation** |
+| **Captured hardened-run telemetry** | — | **117 network events / 12 MySQL events** |
+| **Captured hardened-run Windows logons** | — | **0 failed / 0 successful** in the validation window |
+
+> **Measurement note:** Post-hardening event counts and the ~9-minute interval describe the captured validation window and controlled test. They are not presented as universal attack-rate or MTTD benchmarks.
+
+The result was not simply a cleaned-up honeypot. The incident produced a **measurable reduction in attack surface, restored data integrity, and new detection coverage derived directly from observed attacker behavior**.
+
+---
+
 ## What This Project Demonstrates
 
 **DFIR:** evidence preservation, scoping, reconstruction, containment, eradication, recovery  
