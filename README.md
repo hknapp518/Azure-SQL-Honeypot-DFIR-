@@ -25,26 +25,33 @@ I used the compromise as a **detection-engineering feedback loop**: reconstruct 
 
 ## Vulnerable vs. Hardened Security Outcomes
 
-The project was designed as a controlled **before-and-after security experiment**: expose the vulnerable Azure/MySQL workload, measure the resulting activity and compromise, harden the same system, then measure the hardened environment.
+This project was designed as a controlled **before-and-after security experiment**: expose a deliberately vulnerable Azure/MySQL workload, measure the resulting attack activity and compromise, harden the same system, then measure the hardened environment.
 
-| Security Metric | 🔴 Vulnerable Exposure | 🟢 Hardened Exposure | Outcome |
+| Security Metric | 🔴 Vulnerable Exposure | 🟢 Hardened Validation | Security Outcome |
 |---|---:|---:|---|
-| **Failed Windows logons** | Attack activity observed during exposure* | **0** in captured hardened validation window | Reduced |
-| **Successful Windows logons** | Successful remote logon activity observed* | **0** in captured hardened validation window | Reduced |
-| **External privileged MySQL access** | Multiple external `root@IP` sessions observed | **0 expected by design; remote `root@'%'` removed** | Remote root eliminated |
-| **Destructive SQL operations** | **40** identified during incident hunt | **0 uncontrolled** | Destructive path removed |
-| **High-impact MySQL admin actions** | **5 actions in ~3 sec** | **0 observed** | Destructive admin sequence absent |
-| **Database destruction** | **Yes** — corporate tables/database destroyed | **No** during hardened validation | Prevented in validation |
-| **Allow-all inbound NSG** | **Enabled** | **Removed** | Attack surface reduced |
-| **Windows Firewall** | **Disabled** | **Domain / Private / Public enabled** | Host firewall restored |
-| **MySQL remote root** | `root@'%'` **enabled** | `root@localhost` **only** | Privileged remote access removed |
-| **Corporate data state** | Tables destroyed during extortion activity | **Restored:** 372 credentials, 1,000 customers, 1,963 orders, 1,963 payments | Data recovered |
-| **Detection coverage** | Primarily authentication-focused | **+3 behavior-based Sentinel analytics** | Post-auth visibility added |
-| **Hardened telemetry health** | — | **117 network events / 12 MySQL events** captured | Monitoring remained operational |
+| **Windows logon events** | **307** | **0** | No Windows logon activity observed |
+| **Failed Windows logons** | **239** | **0** | Brute-force/authentication noise eliminated in validation window |
+| **Successful Windows logons** | **47** | **0** | No successful Windows logons observed |
+| **Unique Windows remote IPs** | **10** | **0 observed** | Remote authentication activity absent |
+| **MySQL audit events** | **1,562** | **12** | **99.2% lower** captured MySQL event volume |
+| **Failed MySQL authentication attempts** | **73** | **0 observed*** | No failed MySQL authentication observed in validation |
+| **Successful external MySQL connections** | **152** | **0 expected by hardened design*** | External privileged path removed |
+| **External root connections** | **112** | **0 expected by hardened design*** | Remote root eliminated |
+| **Unique external MySQL source IPs** | **13** | **0 expected by hardened design*** | Internet-sourced MySQL access removed |
+| **Destructive SQL operations** | **34** | **0 uncontrolled** | No destructive attacker activity observed |
+| **High-impact MySQL admin operations** | **5** | **0 observed** | Destructive admin sequence absent |
+| **Database destruction** | **Yes** | **No** | Corporate database remained intact after recovery/hardening |
+| **Allow-all inbound NSG** | **Enabled** | **Removed** | Internet attack surface reduced |
+| **Windows Firewall** | **Disabled** | **All profiles enabled** | Host firewall restored |
+| **MySQL privileged account** | `root@'%'` | `root@localhost` only | Remote privileged authentication removed |
+| **Corporate data** | **Destroyed during extortion activity** | **Restored:** 372 credentials, 1,000 customers, 1,963 orders, 1,963 payments | Data integrity recovered |
+| **Detection coverage** | Primarily authentication-focused | **+3 behavior-based Sentinel analytics** | Post-authentication behavior now detected |
 
-> **Measurement note:** Hardened counts describe the captured post-hardening validation window. The exact vulnerable-exposure Windows failed/successful logon totals are intentionally not substituted with pre-exposure baseline counts. They should only be added when verified from the vulnerable-exposure measurement window.
+> **Measurement scope:** Vulnerable-side authentication and MySQL counts come from the defined vulnerable exposure query window. Hardened-side counts come from the captured post-hardening validation window and should not be interpreted as equal-duration traffic-rate comparisons. The **34 destructive SQL operations** above are the time-bounded exposure metric; the broader incident hunt identified **40 destructive SQL events** across the historical dataset.
 
-**Result:** the vulnerable configuration permitted privileged external database access and destructive extortion activity. After containment, recovery, and hardening, the captured validation window showed **zero Windows logons, no uncontrolled destructive SQL, remote MySQL root access removed, and telemetry/detection coverage still operating**.
+> \* Hardened MySQL remote-access outcomes are supported by the removal of `root@'%'`, retention of `root@localhost`, removal of the allow-all inbound NSG rule, and restoration of Windows Firewall. They are not presented as equivalent-duration Internet attack counts.
+
+**Result:** while vulnerable, the system recorded **307 Windows logon events, 1,562 MySQL events, 112 external root connections, 34 destructive SQL operations, and 5 high-impact administrative operations**, culminating in destructive database extortion. After containment, recovery, and hardening, the captured validation window showed **zero Windows logons, no uncontrolled destructive SQL, no observed high-impact administrative activity, and continued telemetry collection**.
 
 
 ---
