@@ -1,4 +1,4 @@
-# Azure Ransomware Honeypot — DFIR & Detection Engineering
+# Azure Ransomware & DFIR & Detection Engineering
 
 > **Vulnerable Azure workload → ransomware attack → DFIR → Sentinel detections → hardened validation**
 
