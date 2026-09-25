@@ -1,12 +1,12 @@
-# Azure MySQL Honeypot — DFIR & Detection Engineering
+# Azure Ransomware Honeypot — DFIR & Detection Engineering
 
-> **Real attack telemetry → destructive database extortion → DFIR → tuned Sentinel detections → hardened recovery**
+> **Vulnerable Azure workload → ransomware attack → DFIR → Sentinel detections → hardened validation**
 
-During a controlled cyber-range exposure, external infrastructure gained privileged MySQL access to an Azure Windows workload. Custom telemetry captured destructive SQL, an extortion artifact demanding cryptocurrency, database deletion, and a rapid cluster of high-impact administrative commands.
+Intentionally exposed an Azure Windows/MySQL workload to capture real-world attack activity. The system was compromised through privileged MySQL access, followed by **destructive SQL and a cryptocurrency ransomware/extortion attack**.
 
-I used the compromise as a **detection-engineering feedback loop**: reconstruct the attack, contain and recover the system, identify visibility gaps, engineer new Sentinel analytics from the observed behavior, tune correlation logic, and validate the hardened environment.
+I investigated the compromise, recovered and hardened the environment, then converted the observed attacker behavior into **3 new Microsoft Sentinel detections**.
 
-**Stack:** Microsoft Sentinel • Defender for Endpoint • Azure • Log Analytics • AMA/DCR • KQL • MySQL
+**Stack:** Microsoft Sentinel • Defender for Endpoint • Azure • KQL • MySQL
 
 ### Incident at a Glance
 
@@ -14,7 +14,7 @@ I used the compromise as a **detection-engineering feedback loop**: reconstruct 
 |---|---|
 | **Compromise** | External privileged MySQL `root` sessions captured |
 | **Impact** | `DROP TABLE` / `DROP DATABASE` destroyed synthetic corporate data |
-| **Extortion** | `RECOVER_YOUR_DATA` artifact demanded cryptocurrency |
+| **Ransomware Attack** | `RECOVER_YOUR_DATA` ransom artifact deployed after destructive database activity |
 | **Detection** | 3 incident-derived Sentinel analytics engineered and validated |
 | **Recovery** | Corporate schema restored and row counts verified |
 | **Hardening** | Broad NSG exposure removed, firewall restored, remote `root@'%'` eliminated |
