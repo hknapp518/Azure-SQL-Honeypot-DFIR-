@@ -12,12 +12,14 @@ I investigated the compromise, recovered and hardened the environment, then conv
 
 | | Evidence-backed result |
 |---|---|
-| **Compromise** | External privileged MySQL `root` sessions captured |
-| **Impact** | `DROP TABLE` / `DROP DATABASE` destroyed synthetic corporate data |
-| **Ransomware Attack** | `RECOVER_YOUR_DATA` ransom artifact deployed after destructive database activity |
-| **Detection** | 3 incident-derived Sentinel analytics engineered and validated |
-| **Recovery** | Corporate schema restored and row counts verified |
-| **Hardening** | Broad NSG exposure removed, firewall restored, remote `root@'%'` eliminated |
+| **Attack Surface** | **10 Windows remote IPs** + **13 external MySQL source IPs** observed |
+| **Authentication** | **239 failed Windows logons** + **73 failed MySQL authentications** |
+| **Compromise** | **112 external MySQL root connections** captured |
+| **Ransomware Attack** | **34 destructive SQL operations** + `RECOVER_YOUR_DATA` ransom artifact |
+| **Impact** | Corporate database **destroyed** + **5 high-impact admin operations in ~3 seconds** |
+| **Detection Engineering** | **3 new Sentinel analytics** engineered and validated from observed attack behavior |
+| **Hardening Result** | **0 Windows logons**, **0 uncontrolled destructive SQL**, remote `root@'%'` **removed** |
+| **Recovery** | **5,298 synthetic records restored** across 4 corporate tables |
 
 > The ransom note claimed the data had been backed up/downloaded. Telemetry did **not** prove exfiltration, so I do not claim it occurred.
 
