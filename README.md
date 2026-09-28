@@ -104,10 +104,11 @@ For the full chronology, see the **[attack timeline](timeline/attack-timeline.md
 
 The original monitoring emphasized authentication. DFIR showed the highest-impact behavior occurred **after authentication**, so I converted the incident into three behavior-based analytics.
 
-<img width="1606" height="378" alt="evidence-detection-engineering07-sentinel-final-detection-suite(3)" src="https://github.com/user-attachments/assets/06ca5e97-cff0-4863-95ed-a52358d4f5db" />
+**Detection evolution:** the environment began with **2 authentication-focused analytics**. The compromise exposed a post-authentication visibility gap, which drove the **3 behavioral detections** below. The final Sentinel suite expanded to **5 enabled analytics**.
 
+<img width="1606" height="378" alt="Final Microsoft Sentinel detection suite showing five enabled analytics rules" src="https://github.com/user-attachments/assets/06ca5e97-cff0-4863-95ed-a52358d4f5db" />
 
-*Pre-exposure detection coverage — Sentinel initially monitored successful Windows and MySQL authentication. The compromise exposed a post-authentication visibility gap that led to the three behavioral detections below.*
+*Final detection coverage — 5 enabled Sentinel analytics: 2 original authentication detections plus 3 incident-derived behavioral detections for external privileged MySQL access, mass destructive SQL, and high-impact administrative activity.*
 
 | Detection | What it detects | Validation |
 |---|---|---|
