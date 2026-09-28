@@ -1,3 +1,4 @@
+
 # Azure Ransomware Honeypot | DFIR & Detection Engineering
 
 > **Vulnerable Azure workload → ransomware/extortion attack → DFIR → Sentinel detections → hardened validation**
@@ -80,7 +81,7 @@ This custom database telemetry exposed the actions that mattered after authentic
 At approximately **2026-09-17 16:57:19 UTC**, `root@45.8.17.198` established an SSL/TLS MySQL session as **ConnectionId 19**. Within roughly **94 seconds**, the session enumerated database objects, created an extortion artifact, inserted a cryptocurrency ransom message, and dropped the synthetic corporate tables `orders`, `credentials`, `customers`, and `payments`.
 
 Later telemetry captured a rapid administrative sequence:
-
+<img width="1541" height="708" alt="evidence-detection-engineering-02-mysql-high-impact-admin-detection(2)" src="https://github.com/user-attachments/assets/9956bf09-8261-48fd-9097-41bc9126c9f4" />
 ```text
 RESET MASTER
 PURGE BINARY LOGS ...
@@ -90,6 +91,8 @@ SHUTDOWN
 ```
 
 The destructive activity supports **MITRE ATT&CK T1485 — Data Destruction**. Encryption was not observed. A focused MDE hunt also found **no `mysqld.exe` child-process execution**, keeping the defensible compromise chain to:
+
+<img width="1807" height="561" alt="01-ransomware-note-sanitized(1)" src="https://github.com/user-attachments/assets/9a79576c-4351-49ab-9f93-6154b944a34e" />
 
 **Internet → privileged MySQL access → destructive SQL → database extortion**
 
@@ -101,7 +104,8 @@ For the full chronology, see the **[attack timeline](timeline/attack-timeline.md
 
 The original monitoring emphasized authentication. DFIR showed the highest-impact behavior occurred **after authentication**, so I converted the incident into three behavior-based analytics.
 
-<img width="1588" height="410" alt="Microsoft Sentinel authentication analytics enabled before honeypot exposure" src="https://github.com/user-attachments/assets/5871dbed-daf1-4236-a47c-b83f2740830a" />
+<img width="1606" height="378" alt="evidence-detection-engineering07-sentinel-final-detection-suite(3)" src="https://github.com/user-attachments/assets/06ca5e97-cff0-4863-95ed-a52358d4f5db" />
+
 
 *Pre-exposure detection coverage — Sentinel initially monitored successful Windows and MySQL authentication. The compromise exposed a post-authentication visibility gap that led to the three behavioral detections below.*
 
@@ -164,7 +168,6 @@ After confirming destructive activity, I:
 | `orders` | 1,963 |
 | `payments` | 1,963 |
 
-SOAR containment was designed but **not represented as implemented**: cyber-range RBAC blocked the required Logic App and API-connection write permissions.
 
 ---
 
