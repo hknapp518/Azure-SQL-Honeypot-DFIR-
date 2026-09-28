@@ -35,6 +35,18 @@ I reconstructed the incident, contained and recovered the workload, hardened the
 
 **Authentication telemetry showed access occurred. Database telemetry showed what the attacker actually did after access.**
 
+### Custom MySQL Telemetry Pipeline
+
+Native endpoint telemetry was not enough to reconstruct post-authentication database activity, so I configured a **custom MySQL telemetry path** from the VM into Sentinel:
+
+**MySQL general/audit log → Azure Monitor Agent → Data Collection Rule → Log Analytics `MySQLAudit_CL` → KQL/Sentinel**
+
+This custom database telemetry exposed the actions that mattered after authentication: external `root` sessions, database enumeration, `DROP TABLE` / `DROP DATABASE`, privilege changes, binary-log manipulation, and shutdown activity.
+
+<img width="1576" height="668" alt="Custom MySQL telemetry successfully ingested into MySQLAudit_CL in Log Analytics" src="https://github.com/user-attachments/assets/78e47b48-85e0-40eb-a424-513dab0c1aa4" />
+
+*Custom telemetry validation — MySQL activity from CORP-DB-PROD02 successfully ingested into the `MySQLAudit_CL` table, providing database-level visibility beyond standard endpoint telemetry.*
+
 ---
 
 ## Vulnerable vs. Hardened Security Outcomes
@@ -88,6 +100,10 @@ For the full chronology, see the **[attack timeline](timeline/attack-timeline.md
 ## Detection Engineering
 
 The original monitoring emphasized authentication. DFIR showed the highest-impact behavior occurred **after authentication**, so I converted the incident into three behavior-based analytics.
+
+<img width="1588" height="410" alt="Microsoft Sentinel authentication analytics enabled before honeypot exposure" src="https://github.com/user-attachments/assets/5871dbed-daf1-4236-a47c-b83f2740830a" />
+
+*Pre-exposure detection baseline — Sentinel authentication analytics were enabled before exposure. The incident later demonstrated why authentication-only coverage was insufficient and drove the three post-authentication behavioral detections below.*
 
 | Detection | What it detects | Validation |
 |---|---|---|
