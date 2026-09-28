@@ -103,13 +103,27 @@ The original monitoring emphasized authentication. DFIR showed the highest-impac
 
 <img width="1588" height="410" alt="Microsoft Sentinel authentication analytics enabled before honeypot exposure" src="https://github.com/user-attachments/assets/5871dbed-daf1-4236-a47c-b83f2740830a" />
 
-*Pre-exposure detection baseline — Sentinel authentication analytics were enabled before exposure. The incident later demonstrated why authentication-only coverage was insufficient and drove the three post-authentication behavioral detections below.*
+*Pre-exposure detection coverage — Sentinel initially monitored successful Windows and MySQL authentication. The compromise exposed a post-authentication visibility gap that led to the three behavioral detections below.*
 
 | Detection | What it detects | Validation |
 |---|---|---|
 | **[MySQL Mass Destructive Database Activity](detections/mysql-mass-destructive-database-activity.kql)** | Bursts of `DROP TABLE` / `DROP DATABASE` activity | Historical attack + controlled DROP test |
 | **[MySQL High-Impact Administrative Activity](detections/mysql-high-impact-administrative-activity.kql)** | Log manipulation, privilege changes, and shutdown behavior | **5 actions in ~3 sec** |
 | **[External Privileged MySQL Authentication](detections/mysql-external-privileged-authentication.kql)** | Explicit external `root` sessions aggregated by source | Repeated privileged connections observed |
+
+### Final Detection Coverage — 5 Enabled Analytics
+
+The finished Sentinel coverage retained the **2 original authentication detections** and added **3 incident-derived behavioral detections**:
+
+| Coverage | Sentinel analytic | Purpose |
+|---|---|---|
+| Original | `HarryK-SQL-Successful-Login` | Successful MySQL authentication |
+| Original | `HarryK-success-logins` | Successful Windows authentication |
+| Incident-derived | `HarryK - External Privileged MySQL Authentication` | External privileged/root access |
+| Incident-derived | `HarryK - MySQL Mass Destructive Database Activity` | Bursts of `DROP TABLE` / `DROP DATABASE` |
+| Incident-derived | `HarryK - MySQL High-Impact Administrative Activity` | Log manipulation, privilege changes, and shutdown |
+
+**Detection evolution:** **2 authentication rules → compromise → DFIR → 3 new behavioral detections → 5 total enabled analytics.**
 
 ### Detection tuning that mattered
 
